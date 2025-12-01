@@ -56,7 +56,7 @@ def parse_item_block(lines, receipt_name, receipt_date, payment_details):
 
         elif weight_price_pattern.match(line):
             m = weight_price_pattern.match(line)
-            item_data["Qty"] = m.group(1) + " lbs"
+            item_data["Qty"] = m.group(1)
             item_data["UnitPrice"] = m.group(2)
             # Extended price sometimes shown as BasePrice
             if not item_data["OriginalUnitPrice"]:
