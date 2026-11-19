@@ -106,7 +106,7 @@ def parse_kroger_receipt(pdf_path):
         "Date": receipt_date,
         "Card Used": "",
         "SubTotal": "",
-        "Taxes": "",
+        "Discount": "",
         "Total": ""
     }
 
@@ -159,7 +159,7 @@ def parse_kroger_receipt(pdf_path):
                         amt = order_coupon_adjustment_pattern.match(line).group(1)
                         clean_str = amt.replace("$", "").replace(",", "").strip()
                         orderCoupon = Decimal(clean_str)
-                        summary_entry["SubTotal"] = amt
+                        summary_entry["Discount"] = amt
 
                 if orderFulfillment == 0:
                     if order_fullfillment_fee_pattern.match(line):
@@ -167,12 +167,12 @@ def parse_kroger_receipt(pdf_path):
                         clean_str = amt.replace("$", "").replace(",", "").strip()
                         orderFulfillment = Decimal(clean_str)
 
-                if orderTaxes == 0:
-                    if  order_sales_tax_pattern.match(line):
-                        amt = order_sales_tax_pattern.match(line).group(1)
-                        clean_str = amt.replace("$", "").replace(",", "").strip()
-                        orderTaxes = Decimal(clean_str)
-                        summary_entry["Taxes"] = amt
+                # if orderTaxes == 0:
+                #     if  order_sales_tax_pattern.match(line):
+                #         amt = order_sales_tax_pattern.match(line).group(1)
+                #         clean_str = amt.replace("$", "").replace(",", "").strip()
+                #         orderTaxes = Decimal(clean_str)
+                #         summary_entry["Taxes"] = amt
 
                 if orderTotal == 0:
                     if order_total_pattern.match(line):
