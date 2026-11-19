@@ -211,7 +211,7 @@ def parse_files(filePaths: list):
             summary_entries.append(combined_entries[1])
 
     #write_entires_to_file("./itemized.csv", ["Receipt", "Date", "Description", "PricePaid", "Qty", "UnitPrice", "OriginalUnitPrice", "Type", "Card Used"], item_entries)
-    write_entires_to_file("./summarized.csv", ["Receipt", "Date", "Card Used", "SubTotal", "Taxes", "Total"], summary_entries)
+    write_entires_to_file("./summarized.csv", ["Receipt", "Date", "Card Used", "SubTotal", "Discount", "Total"], summary_entries)
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
