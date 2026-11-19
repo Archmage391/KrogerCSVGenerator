@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pdfminer
 import pdfplumber
 import csv
@@ -12,13 +14,20 @@ from datetime import datetime
 item_desc_pattern = re.compile(r"^(.+?)\s+\$?(\d+\.\d{2})$")
 qty_price_pattern = re.compile(r"^(\d+)\s+x\s+\$?(\d+\.\d{2})(?:\s+\$?(\d+\.\d{2}))?\s+each")
 weight_price_pattern = re.compile(r"^([\d\.]+)\s*(?:lb|lbs|oz|ct)\s+x\s+\$?(\d+\.\d{2})\s+each.*$")
-coupon_pattern = re.compile(r"^Item Coupon/Sale:\s+\$(-\d+\.\d{2})$")
+item_coupon_pattern = re.compile(r"^Item Coupons/Sale:\s+\$(-\d+\.\d{2})$")
 upc_pattern = re.compile(r"^UPC:\s+(\d+)$")
-subtotal_pattern = re.compile(r"^Original Item Total\s+\$(\d+\.\d{2})$")
-tax_pattern = re.compile(r"^Sales Tax\s+\+\$(\d+\.\d{2})$")
-total_pattern = re.compile(r"^Order Total\s+\$(\d+\.\d{2})$")
+#subtotal_pattern = re.compile(r"^Original Item Total\s+\$(\d+\.\d{2})$")
+#tax_pattern = re.compile(r"^Sales Tax\s+\+\$(\d+\.\d{2})$")
+#total_pattern = re.compile(r"^Order Total\s+\$(\d+\.\d{2})$")
 date_pattern = re.compile(r"^Order Date:\s+(\w+\. \d{1,2}, \d{4})$")
-payment_details_pattern = re.compile(r"(MASTERCARD|VISA|DISCOVER|DEBIT).?(\d{4})")
+payment_details_pattern = re.compile(r"(mastercard|visa|discover|debit).?(\d{4})")
+
+# Order Level Regex
+order_subtotal_pattern = re.compile(r"^Original Item Total\s+\$(\d+\.\d{2})$")
+order_coupon_adjustment_pattern = re.compile(r"^Item Coupons/Sales\s+-\$(\d+\.\d{2})$") # Removes from Subtotal
+order_fullfillment_fee_pattern = re.compile(r"^Fulfillment Fee\s+\+\$(\d+\.\d{2})$")
+order_sales_tax_pattern = re.compile(r"^Sales Tax\s+\$(\d+\.\d{2})$")
+order_total_pattern = re.compile(r"^Order Total\s+\$(\d+\.\d{2})$") # Final Price Paid
 
 # Date Format
 date_format = "%b. %d, %Y"
@@ -62,8 +71,8 @@ def parse_item_block(lines, receipt_name, receipt_date, payment_details):
             if not item_data["OriginalUnitPrice"]:
                 item_data["OriginalUnitPrice"] = item_data["PricePaid"]
 
-        elif coupon_pattern.match(line):
-            m = coupon_pattern.match(line)
+        elif item_coupon_pattern.match(line):
+            m = item_coupon_pattern.match(line)
             item_data["Discount"] = m.group(1)
 
     return item_data
@@ -81,9 +90,9 @@ def get_payment_details(pdf: pdfplumber.pdf.PDF):
                     continue
 
                 # Try to payment details from header
-                if payment_details_pattern.match(line):
-                    m = payment_details_pattern.match(line)
-                    return m.group(1) + m.group(2)
+                if payment_details_pattern.match(line.lower()):
+                    m = payment_details_pattern.match(line.lower())
+                    return m.group(1).upper() + m.group(2)
 
 def parse_kroger_receipt(pdf_path):
     """Parse a single Kroger PDF receipt into structured entries"""
@@ -101,9 +110,11 @@ def parse_kroger_receipt(pdf_path):
         "Total": ""
     }
 
-    subTotal = 0
-    taxes = 0
-    total = 0
+    orderSubTotal = 0
+    orderCoupon = 0
+    orderFulfillment = 0
+    orderTaxes = 0
+    orderTotal = 0
 
     with pdfplumber.open(pdf_path) as pdf:
         block = []
@@ -135,17 +146,39 @@ def parse_kroger_receipt(pdf_path):
                         date_object = datetime.strptime(date_pattern.match(line).group(1), date_format)
                         receipt_date = date_object.strftime(date_output_format)
                         summary_entry["Date"] = receipt_date
-                if subTotal == 0:
-                    if subtotal_pattern.match(line):
-                        amt = subtotal_pattern.match(line).group(1)
+
+                if orderSubTotal == 0:
+                    if order_subtotal_pattern.match(line):
+                        amt = order_subtotal_pattern.match(line).group(1)
+                        clean_str = amt.replace("$", "").replace(",", "").strip()
+                        orderSubTotal = Decimal(clean_str)
                         summary_entry["SubTotal"] = amt
-                if taxes == 0:
-                    if  tax_pattern.match(line):
-                        amt = tax_pattern.match(line).group(1)
+                        
+                if orderCoupon == 0:
+                    if order_coupon_adjustment_pattern.match(line):
+                        amt = order_coupon_adjustment_pattern.match(line).group(1)
+                        clean_str = amt.replace("$", "").replace(",", "").strip()
+                        orderCoupon = Decimal(clean_str)
+                        summary_entry["SubTotal"] = amt
+
+                if orderFulfillment == 0:
+                    if order_fullfillment_fee_pattern.match(line):
+                        amt = order_fullfillment_fee_pattern.match(line).group(1)
+                        clean_str = amt.replace("$", "").replace(",", "").strip()
+                        orderFulfillment = Decimal(clean_str)
+
+                if orderTaxes == 0:
+                    if  order_sales_tax_pattern.match(line):
+                        amt = order_sales_tax_pattern.match(line).group(1)
+                        clean_str = amt.replace("$", "").replace(",", "").strip()
+                        orderTaxes = Decimal(clean_str)
                         summary_entry["Taxes"] = amt
-                if total == 0:
-                    if total_pattern.match(line):
-                        amt = total_pattern.match(line).group(1)
+
+                if orderTotal == 0:
+                    if order_total_pattern.match(line):
+                        amt = order_total_pattern.match(line).group(1)
+                        clean_str = amt.replace("$", "").replace(",", "").strip()
+                        orderTotal = Decimal(clean_str)
                         summary_entry["Total"] = amt
 
 
@@ -177,8 +210,7 @@ def parse_files(filePaths: list):
             item_entries.extend(combined_entries[0])
             summary_entries.append(combined_entries[1])
 
-    write_entires_to_file("./itemized.csv", ["Receipt", "Date", "Description", "PricePaid", "Qty",
-                        "UnitPrice", "OriginalUnitPrice", "Type", "Card Used"], item_entries)
+    #write_entires_to_file("./itemized.csv", ["Receipt", "Date", "Description", "PricePaid", "Qty", "UnitPrice", "OriginalUnitPrice", "Type", "Card Used"], item_entries)
     write_entires_to_file("./summarized.csv", ["Receipt", "Date", "Card Used", "SubTotal", "Taxes", "Total"], summary_entries)
 
 if __name__ == "__main__":
